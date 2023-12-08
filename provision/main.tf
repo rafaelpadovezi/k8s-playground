@@ -4,6 +4,11 @@ terraform {
       source  = "tehcyx/kind"
       version = "0.2.1"
     }
+
+    helm = {
+      source  = "hashicorp/helm"
+      version = "2.12.1"
+    }
   }
 }
 
@@ -35,4 +40,32 @@ resource "kind_cluster" "default" {
       role = "worker"
     }
   }
+}
+
+provider "helm" {
+  kubernetes {
+    config_path = "./playground-cluster-config"
+  }
+}
+
+resource "helm_release" "ingress_controller" {
+  name       = "ingress-nginx"
+  repository = "https://kubernetes.github.io/ingress-nginx"
+  chart      = "ingress-nginx"
+
+  values = [
+    "${file("./helm/ingress-nginx-values.yaml")}"
+  ]
+
+  namespace        = "ingress-nginx"
+  create_namespace = true
+
+  set {
+    name  = "controller.allowSnippetAnnotations"
+    value = "true"
+  }
+
+  depends_on = [
+    kind_cluster.default
+  ]
 }
