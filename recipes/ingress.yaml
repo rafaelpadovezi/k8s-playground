@@ -1,0 +1,32 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nginx-ingress
+  namespace: apps
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /nginx(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: nginx-service
+                port:
+                  number: 80
+          - path: /elastic(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: elasticsearch-service
+                port:
+                  number: 9200
+          - path: /monitor(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: monitor-service
+                port:
+                  number: 80

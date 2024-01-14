@@ -1,19 +1,3 @@
-terraform {
-  required_providers {
-    kind = {
-      source  = "tehcyx/kind"
-      version = "0.2.1"
-    }
-
-    helm = {
-      source  = "hashicorp/helm"
-      version = "2.12.1"
-    }
-  }
-}
-
-provider "kind" {}
-
 resource "kind_cluster" "default" {
   name       = "playground-cluster"
   node_image = "kindest/node:v1.27.3"
@@ -42,12 +26,6 @@ resource "kind_cluster" "default" {
   }
 }
 
-provider "helm" {
-  kubernetes {
-    config_path = "./playground-cluster-config"
-  }
-}
-
 resource "helm_release" "ingress_controller" {
   name       = "ingress-nginx"
   repository = "https://kubernetes.github.io/ingress-nginx"
@@ -67,5 +45,66 @@ resource "helm_release" "ingress_controller" {
 
   depends_on = [
     kind_cluster.default
+  ]
+}
+
+resource "kubernetes_namespace" "apps" {
+  metadata {
+    name = "apps"
+  }
+
+  depends_on = [
+    kind_cluster.default
+  ]
+}
+
+resource "null_resource" "wait_for_ready_ingress_controller" {
+  provisioner "local-exec" {
+    command = <<EOT
+    kubectl wait --for=condition=ready pod \
+      --selector=app.kubernetes.io/component=controller \
+      --namespace ingress-nginx \
+      --timeout=90s
+EOT
+  }
+
+  depends_on = [helm_release.ingress_controller]
+}
+
+resource "kubernetes_manifest" "ingress" {
+  manifest = yamldecode(file("../recipes/ingress.yaml"))
+
+  depends_on = [
+    null_resource.wait_for_ready_ingress_controller
+  ]
+}
+
+resource "kubernetes_manifest" "elastic" {
+  manifest = yamldecode(file("../recipes/elastic/deployment.yaml"))
+
+  depends_on = [
+    null_resource.wait_for_ready_ingress_controller
+  ]
+}
+
+resource "kubernetes_manifest" "elastic_service" {
+  manifest = yamldecode(file("../recipes/elastic/service.yaml"))
+
+  depends_on = [
+    null_resource.wait_for_ready_ingress_controller
+  ]
+}
+
+resource "helm_release" "fluentd" {
+  name       = "fluentd"
+  repository = "https://fluent.github.io/helm-charts"
+  chart      = "fluentd"
+
+  values           = ["${file("./helm/fluentd-values.yaml")}"]
+  namespace        = "logging"
+  create_namespace = true
+
+  depends_on = [
+    kubernetes_manifest.elastic
   ]
 }
